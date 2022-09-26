@@ -1,6 +1,6 @@
-% The code for pricing European call options in the paper "Analytical 
-% Solvability and Exact Simulation in Models with Affine Stochastic 
-% Volatility and L\'evy Jumps". Model: 4/2 SV.
+% The code for pricing European call options using Hilbert interpolation 
+% in the paper "Analytical Solvability and Exact Simulation in Models 
+% with Affine Stochastic Volatility and L\'evy Jumps". Model: 4/2 SV.
 
 
 clear
@@ -24,8 +24,8 @@ rho = -0.7;
 
 truePrice = 9.1069; % benchmark
 
-N = 1024*10^4; % number of simulation paths
-num = round(10^9/N); % number of trials
+N = 1024e4; % number of simulation paths
+num = round(1e8/N); % number of trials
 price = zeros(num,1);
 stde_price = zeros(num,1);
 
@@ -55,28 +55,29 @@ for temp = 1:num
     logV0 = log(V0);
     logVt = min(max(logVt,logV0-6*std(logVt)),logV0+2.6*std(logVt));
     
-    M_V = 200; % number of grid points in the Vt dimension
+    L_V = 200; % number of grid points in the Vt dimension
     VU = max(logVt)*1.001; % upper bound of logVt
     VL = min(logVt); % lower bound of logVt
       
-    M_V1 = M_V-1;
+    L_V1 = L_V-1;
     alpha = (VU-VL)/2;
     c1 = asinh((VL-logV0)/alpha);
     c2 = asinh((VU-logV0)/alpha);
-    VGrid = logV0+alpha*sinh(c2*(0:M_V1)/M_V1+c1*(1-(0:M_V1)/M_V1)); % nonuniform grids
+    VGrid = logV0+alpha*sinh(c2*(0:L_V1)/L_V1+c1*(1-(0:L_V1)/L_V1)); % nonuniform grids
     
-    M = 1000; % number of grid points in the Xt dimension
+    M = 1000; 
+    KX = 2*M+1; % number of grid points in the Xt dimension
     XU = X0+log(50); % upper bound of Xt
     XL = X0-log(50); % lower bound of Xt
-    XV = XL:(XU-XL)/(2*M+1):XU; % uniform grids    
-    h = 2*pi/(XU-XL); % for other choices of h, need to use FrFFT later 
+    XV = XL:(XU-XL)/KX:XU; % uniform grids    
     
-    J = 2*M+1; % in order to use fft, we have to match the dimension
-    ChF = zeros(J,M_V); % characteris function
+    h = 2*pi/(XU-XL); % for other choices of h, need to use FrFFT later     
+    MX = 2*M+1; % in order to use fft, we have to match the dimension
+    ChF = zeros(MX,L_V); % characteristic function
     X = X0;
     x = exp(logV0);
     y = exp(VGrid);    
-    z_ChF = 1i*h*((1:J)-M-1.5);    
+    z_ChF = 1i*h*((1:MX)-M-1.5);    
     P_ChF=kappa*kappa-2*sigma*sigma.*(z_ChF.*(a*kappa*rho/sigma-a*a/2)+z_ChF.*z_ChF.*(1-rho*rho)*a*a./2);
     Q_ChF=(kappa*theta-sigma*sigma/2)^2-...
         2*sigma*sigma.*(z_ChF.*(b*sigma*rho/2-b*kappa*theta*rho/sigma-b*b/2)+z_ChF.*z_ChF.*(1-rho*rho)*b*b./2);
@@ -103,14 +104,14 @@ for temp = 1:num
     
   
     %% Step 3: compute the CDF on the grids
-    ChF = ChF.*exp(-1i*((1:J)-M-1.5)'*h*XL)./(pi*((1:J)-M-1.5)');    
+    ChF = ChF.*exp(-1i*((1:MX)-M-1.5)'*h*XL)./(pi*((1:MX)-M-1.5)');    
     Fx = 0.5+1i*0.5*fft(ChF).*exp(1i*(0:2*M)'*pi);
     Fx = max(min(real(Fx),1),0);
     
     
     %% Step 4: use interpolation to generate samples of Xt
     cdf = rand(1,N); % uniform r.v.   
-    idx = (asinh((logVt-logV0)/alpha)-c1)/(c2-c1)*M_V1+1; % locate Vt in the grid points
+    idx = (asinh((logVt-logV0)/alpha)-c1)/(c2-c1)*L_V1+1; % locate Vt in the grid points
     idxL = floor(idx);
     idxU = idxL +1;
     
@@ -122,7 +123,7 @@ for temp = 1:num
     indsidxL1 = 1;
     indsidxL2 = 1;
         
-    for m = 1:M_V-2        
+    for m = 1:L_V-2        
         if sidxL(indsidxL2)==m
             indsidxL1 = indsidxL2;            
             indsidxL2 = find(sidxL(indsidxL1:min(indsidxL1+N*0.03,N))>m,1)+indsidxL1-1;        
@@ -133,7 +134,7 @@ for temp = 1:num
         end
     end
     
-    m = M_V-1;
+    m = L_V-1;
     if sidxL(indsidxL2)==m        
         indsidxL1 = indsidxL2;
         indsidxL2 = N;
